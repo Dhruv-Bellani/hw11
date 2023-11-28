@@ -184,7 +184,6 @@ In addition to your code, **you will also need to submit a video recording of yo
    - ... ask again and this time say "yes" to seeing the rest
  - Show when the most recent message was in a chatroom
    - ...as well as a different chatroom
- - Show the number of posts intent...
  - Show the get posts intent...
    - ... for no specified number of posts
    - ... for 3 posts
