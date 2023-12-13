@@ -17,6 +17,7 @@ import ngrok from 'ngrok';
 import morgan from 'morgan';
 import express from 'express';
 import CS571 from '@cs571/mobile-client';
+import { text } from 'stream/consumers';
 
 // Read and register with secret ngrok token.
 ngrok.authtoken(fs.readFileSync("token.secret").toString().trim());
@@ -49,7 +50,9 @@ app.post('/', (req, res) => {
   // A map of intent names to callback functions.
   // The "HelloWorld" is an example only -- you may delete it.
   const intentMap = {
-    "HelloWorld": doHelloWorld
+    // "HelloWorld": doHelloWorld,
+    "GetChatroomMessages": getPosts, 
+    "GetWhenPosted": getRecentPost,
   }
 
   if (intent in intentMap) {
@@ -88,4 +91,112 @@ async function doHelloWorld(req, res) {
       }
     ]
   })
+}
+
+async function getRecentPost(req, res) {
+  const chatroomName = req.body.queryResult.parameters.chatroom;
+  try {
+    const response = await fetch(`https://cs571.org/api/f23/hw11/messages?chatroom=${chatroomName}&page=1`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CS571-ID': 'bid_063cb5f8b3e8cbed55f1a0853fcdf8260757bd1caa625ae82d5fb792edd6517e',
+      }
+    });
+    const data = await response.json();
+    const getLatestMessage = data.messages[0];
+    const date = new Date(getLatestMessage.created);
+    const givenDate = date.toLocaleDateString();
+    const givenTime = date.toLocaleTimeString();
+
+    // Send response to DialogFlow
+    res.status(200).send({
+      fulfillmentMessages: [{
+        text: {
+          text: [
+            `The last message in ${chatroomName} was posted on ${givenDate} at ${givenTime}!`
+          ]
+        }
+      }]
+    });
+  } catch (error) {
+    console.error('Error fetching recent post date:', error);
+    // Send an error response to DialogFlow
+    res.status(500).send({
+      fulfillmentMessages: [{
+        text: {
+          text: [
+            `There was an error retrieving the latest message in ${chatroomName}.`
+          ]
+        }
+      }]
+    });
+  }
+}
+
+async function getPosts(req, res) {
+  const chatroomName = req.body.queryResult.parameters.chatroom;
+  const returnedResquestedPosts = req.body.queryResult.parameters.numMessages;
+  const GivenNumberOfPosts = returnedResquestedPosts > 5 ? 5 : returnedResquestedPosts || 1
+
+  try{
+    const response = await fetch(`https://cs571.org/api/f23/hw11/messages?chatroom=${chatroomName}&page=1`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CS571-ID': 'bid_063cb5f8b3e8cbed55f1a0853fcdf8260757bd1caa625ae82d5fb792edd6517e'
+      }
+    });
+
+    const data = await response.json();
+    const posts = data.messages.slice(0, GivenNumberOfPosts)
+
+    let textResponse;
+    if(returnedResquestedPosts === 1) {
+      textResponse = {
+        text: {
+          text: [`Here is the latest message from ${chatroomName}!`]
+        }
+      };
+    } else if (returnedResquestedPosts > 5) {
+      textResponse = {
+        text: {
+          text: [`Sorry, you can only get upto the latest 5 messages. Here are the 5 latest messages from ${chatroomName}`]
+        }
+      };
+    } else {
+      textResponse = {
+        text: {
+          text: [`Here are the latest ${GivenNumberOfPosts} messages from ${chatroomName}!`]
+        }
+      };
+    }
+
+    const cardResponses = posts.map(post => ({
+      card: {
+        title: post.title,
+        subtitle: `Posted by: ${post.poster}`,
+        buttons: [
+          {
+            text: "Read more",
+            postback: `https://cs571.org/f23/badgerchat/chatrooms/${encodeURIComponent(chatroomName)}`
+          }
+        ]
+      }
+    }));
+
+    res.status(200).send({
+      fulfillmentMessages: [textResponse, ...cardResponses]
+    });
+
+  }catch (error) {
+    console.error('Error fetching posts:', error);
+    res.status(500).send({
+      fulfillmentMessages: [{
+        text: {
+          text: [`There was an error retreiving posts from ${chatroomName}.`]
+        }
+      }]
+    })
+  }
 }
